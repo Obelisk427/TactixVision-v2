@@ -245,13 +245,13 @@ export async function fetchRunMetrics(characterName: string, realm: string, regi
   if (!matchedEncounterId) return { success: false, reason: 'no_log_found' };
 
   // ── Step 2: Use encounterRankings to get the report code + Key % ───────────
-  // metric: "keystone" returns the WCL Key % (overall M+ key performance),
-  // not the default DPS parse.
+  // For M+ (difficulty: 10), omitting metric lets WCL pick the appropriate
+  // default — which is the overall key performance percentile (Key %).
   const rankQuery = /* GraphQL */ `
     query($n: String!, $s: String!, $r: String!, $encID: Int!) {
       characterData {
         character(name: $n, serverSlug: $s, serverRegion: $r) {
-          encounterRankings(encounterID: $encID, difficulty: 10, metric: keystone)
+          encounterRankings(encounterID: $encID, difficulty: 10)
         }
       }
     }
