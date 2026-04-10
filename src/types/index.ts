@@ -183,8 +183,10 @@ export interface PugVettingMetrics {
   damageTakenRaw: number | null;
   /** Total deaths for this character in the run. */
   deaths: number | null;
-  /** WCL parse percentile for this dungeon (0-100). */
+  /** WCL percentile for this dungeon (0-100). */
   parsePercent: number | null;
+  /** Whether parsePercent is Key % (krsi) or DPS parse (default). */
+  isKeyPercent: boolean;
 }
 
 export type PugVettingFailureReason = 'no_log_found';

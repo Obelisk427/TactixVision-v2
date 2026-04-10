@@ -123,15 +123,16 @@ function buildVerdict(
     else lines.push({ icon: '⚡', text: `Only ${kicks} interrupts. DPS must kick — no excuses.`, tone: 'bad' });
   }
 
-  /* ── Key % (universal) ──────────────────────────────────────────── */
+  /* ── WCL percentile (Key % if available, otherwise DPS parse) ────── */
   const parse = metrics.parsePercent;
+  const pctLabel = metrics.isKeyPercent ? 'Key %' : 'parse';
   if (parse !== null) {
     const pi = getParseInfo(parse);
-    if (parse >= 95) lines.push({ icon: '🏆', text: `${pi.label} Key % (${pi.tier}) — elite key performance.`, tone: 'good' });
-    else if (parse >= 75) lines.push({ icon: '📊', text: `${pi.label} Key % (${pi.tier}) — above average.`, tone: 'good' });
-    else if (parse >= 50) lines.push({ icon: '📊', text: `${pi.label} Key % (${pi.tier}) — middle of the pack.`, tone: 'info' });
-    else if (parse >= 25) lines.push({ icon: '📊', text: `${pi.label} Key % (${pi.tier}) — below average for this dungeon.`, tone: 'warn' });
-    else lines.push({ icon: '📊', text: `${pi.label} Key % (${pi.tier}) — bottom quartile. Rough run or undergeared?`, tone: 'bad' });
+    if (parse >= 95) lines.push({ icon: '🏆', text: `${pi.label} ${pctLabel} (${pi.tier}) — elite performer on this dungeon.`, tone: 'good' });
+    else if (parse >= 75) lines.push({ icon: '📊', text: `${pi.label} ${pctLabel} (${pi.tier}) — above average.`, tone: 'good' });
+    else if (parse >= 50) lines.push({ icon: '📊', text: `${pi.label} ${pctLabel} (${pi.tier}) — middle of the pack.`, tone: 'info' });
+    else if (parse >= 25) lines.push({ icon: '📊', text: `${pi.label} ${pctLabel} (${pi.tier}) — below average for this dungeon.`, tone: 'warn' });
+    else lines.push({ icon: '📊', text: `${pi.label} ${pctLabel} (${pi.tier}) — bottom quartile. Rough run or undergeared?`, tone: 'bad' });
   }
 
   /* ── Role-specific performance ──────────────────────────────────── */
@@ -288,6 +289,8 @@ export function PugVettingModal({
   const dmgCtx = metrics ? getDamageContext(metrics.damageTakenPercent, metrics.isTank) : null;
   const parseInfo = metrics ? getParseInfo(metrics.parsePercent) : null;
   const isHealer = role === 'HEALER';
+  const parseLabel = metrics?.isKeyPercent ? 'Key %' : 'Parse %';
+  const parseSubLabel = metrics?.isKeyPercent ? 'WCL key performance percentile' : 'WCL best run DPS percentile';
 
   return (
     /* ── Backdrop ─────────────────────────────────────────────────────── */
@@ -466,14 +469,14 @@ export function PugVettingModal({
               </div>
             </div>
 
-            {/* ── Key % (full width) ────────────────────────────────── */}
+            {/* ── Parse % (full width) ──────────────────────────────── */}
             <div className="relative col-span-2 flex items-center justify-between rounded-xl border border-white/5 bg-white/[0.03] px-5 py-4 shadow-lg shadow-amber-500/10 overflow-hidden">
               <div className="absolute top-0 right-0 w-20 h-20 bg-white/[0.015] rounded-bl-full" />
               <div className="flex items-center gap-3">
                 <span className="text-2xl leading-none">📊</span>
                 <div>
-                  <div className="text-xs font-semibold text-slate-300">Key %</div>
-                  <div className="text-[10px] text-slate-600">{loading ? 'Loading…' : parseInfo?.tier || 'WCL key performance percentile'}</div>
+                  <div className="text-xs font-semibold text-slate-300">{parseLabel}</div>
+                  <div className="text-[10px] text-slate-600">{loading ? 'Loading…' : parseInfo?.tier || parseSubLabel}</div>
                 </div>
               </div>
               <div className={`text-3xl font-black tracking-tight tabular-nums ${loading ? '' : parseInfo?.color ?? 'text-slate-500'}`}>
@@ -527,7 +530,7 @@ export function PugVettingModal({
                   ? 'Querying Warcraft Logs…'
                   : noLogFound
                     ? 'No uploaded Warcraft Logs report could be matched to this Raider.io run.'
-                    : `Judged as ${role.toLowerCase()} (${specName} ${charClass}). Key % and metrics from WCL best-logged run.`}
+                    : `Judged as ${role.toLowerCase()} (${specName} ${charClass}). Parse % is from best WCL run; other metrics are from the selected run.`}
               </p>
             </div>
           </div>

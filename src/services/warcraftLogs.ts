@@ -244,25 +244,38 @@ export async function fetchRunMetrics(characterName: string, realm: string, regi
 
   if (!matchedEncounterId) return { success: false, reason: 'no_log_found' };
 
-  // ── Step 2: Use encounterRankings to get the report code + Key % ───────────
-  // For M+ (difficulty: 10), omitting metric lets WCL pick the appropriate
-  // default — which is the overall key performance percentile (Key %).
-  const rankQuery = /* GraphQL */ `
+  // ── Step 2: Use encounterRankings to get report code + Key % ───────────────
+  // Try "krsi" (Keystone Run Score Index) metric first for true Key %.
+  // If the WCL API rejects it, fall back to default metric (DPS parse).
+  const rankVars = {
+    n: characterName,
+    s: serverSlug,
+    r: region.toUpperCase(),
+    encID: matchedEncounterId,
+  };
+
+  const makeRankQuery = (metricClause: string) => /* GraphQL */ `
     query($n: String!, $s: String!, $r: String!, $encID: Int!) {
       characterData {
         character(name: $n, serverSlug: $s, serverRegion: $r) {
-          encounterRankings(encounterID: $encID, difficulty: 10)
+          encounterRankings(encounterID: $encID, difficulty: 10${metricClause})
         }
       }
     }
   `;
 
-  const rankData = await gqlQuery<any>(token, rankQuery, {
-    n: characterName,
-    s: serverSlug,
-    r: region.toUpperCase(),
-    encID: matchedEncounterId,
-  });
+  let rankData: any;
+  let isKeyPercent = false;
+
+  try {
+    // Attempt Key % via krsi metric
+    rankData = await gqlQuery<any>(token, makeRankQuery(', metric: krsi'), rankVars);
+    isKeyPercent = true;
+  } catch {
+    // krsi not available — fall back to default (DPS parse)
+    rankData = await gqlQuery<any>(token, makeRankQuery(''), rankVars);
+    isKeyPercent = false;
+  }
 
   const rankings = rankData.characterData?.character?.encounterRankings;
   const ranks: any[] = rankings?.ranks ?? [];
@@ -297,13 +310,13 @@ export async function fetchRunMetrics(characterName: string, realm: string, regi
     const targetFight = fights.find((f: any) => f.id === fightID);
 
     if (!targetFight) {
-      return { success: true, reportCode, fightID, matchedDungeon: matchedEncounterName ?? run.dungeon, metrics: { interrupts: 0, dps: 0, hps: 0, damageTakenPercent: null, isTank: false, damageTakenRaw: 0, deaths: 0, parsePercent } };
+      return { success: true, reportCode, fightID, matchedDungeon: matchedEncounterName ?? run.dungeon, metrics: { interrupts: 0, dps: 0, hps: 0, damageTakenPercent: null, isTank: false, damageTakenRaw: 0, deaths: 0, parsePercent, isKeyPercent } };
     }
 
     fightStart = targetFight.startTime;
     fightEnd = targetFight.endTime;
   } catch {
-    return { success: true, reportCode, fightID, matchedDungeon: matchedEncounterName ?? run.dungeon, metrics: { interrupts: 0, dps: 0, hps: 0, damageTakenPercent: null, isTank: false, damageTakenRaw: 0, deaths: 0, parsePercent } };
+    return { success: true, reportCode, fightID, matchedDungeon: matchedEncounterName ?? run.dungeon, metrics: { interrupts: 0, dps: 0, hps: 0, damageTakenPercent: null, isTank: false, damageTakenRaw: 0, deaths: 0, parsePercent, isKeyPercent } };
   }
 
   // ── Step 4: Fetch all metrics using the fight's real time window ───────────
@@ -423,9 +436,10 @@ export async function fetchRunMetrics(characterName: string, realm: string, regi
         damageTakenRaw: charDamageTaken,
         deaths: deathCount,
         parsePercent,
+        isKeyPercent,
       },
     };
   } catch {
-    return { success: true, reportCode, fightID, matchedDungeon: matchedEncounterName ?? run.dungeon, metrics: { interrupts: 0, dps: 0, hps: 0, damageTakenPercent: null, isTank: false, damageTakenRaw: 0, deaths: 0, parsePercent } };
+    return { success: true, reportCode, fightID, matchedDungeon: matchedEncounterName ?? run.dungeon, metrics: { interrupts: 0, dps: 0, hps: 0, damageTakenPercent: null, isTank: false, damageTakenRaw: 0, deaths: 0, parsePercent, isKeyPercent } };
   }
 }
