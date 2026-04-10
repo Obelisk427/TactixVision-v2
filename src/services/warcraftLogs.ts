@@ -270,6 +270,7 @@ export async function fetchRunMetrics(characterName: string, realm: string, regi
 
   const reportCode = bestRank.report.code;
   const fightID = bestRank.report.fightID;
+  const parsePercent: number | null = bestRank.rankPercent ?? null;
 
   // ── Step 3: Fetch the fight's actual start/end times ──────────────────────
   let fightStart: number;
@@ -294,13 +295,13 @@ export async function fetchRunMetrics(characterName: string, realm: string, regi
     const targetFight = fights.find((f: any) => f.id === fightID);
 
     if (!targetFight) {
-      return { success: true, reportCode, fightID, matchedDungeon: matchedEncounterName ?? run.dungeon, metrics: { interrupts: 0, dps: 0, damageTakenPercent: null, isTank: false, damageTakenRaw: 0, deaths: 0 } };
+      return { success: true, reportCode, fightID, matchedDungeon: matchedEncounterName ?? run.dungeon, metrics: { interrupts: 0, dps: 0, hps: 0, damageTakenPercent: null, isTank: false, damageTakenRaw: 0, deaths: 0, parsePercent } };
     }
 
     fightStart = targetFight.startTime;
     fightEnd = targetFight.endTime;
   } catch {
-    return { success: true, reportCode, fightID, matchedDungeon: matchedEncounterName ?? run.dungeon, metrics: { interrupts: 0, dps: 0, damageTakenPercent: null, isTank: false, damageTakenRaw: 0, deaths: 0 } };
+    return { success: true, reportCode, fightID, matchedDungeon: matchedEncounterName ?? run.dungeon, metrics: { interrupts: 0, dps: 0, hps: 0, damageTakenPercent: null, isTank: false, damageTakenRaw: 0, deaths: 0, parsePercent } };
   }
 
   // ── Step 4: Fetch all metrics using the fight's real time window ───────────
@@ -310,6 +311,7 @@ export async function fetchRunMetrics(characterName: string, realm: string, regi
         reportData { report(code: $code) {
           interrupts: table(fightIDs: [$fightID], startTime: $start, endTime: $end, dataType: Interrupts)
           damageDone: table(fightIDs: [$fightID], startTime: $start, endTime: $end, dataType: DamageDone)
+          healingDone: table(fightIDs: [$fightID], startTime: $start, endTime: $end, dataType: Healing)
           damageTaken: table(fightIDs: [$fightID], startTime: $start, endTime: $end, dataType: DamageTaken)
           deaths: table(fightIDs: [$fightID], startTime: $start, endTime: $end, dataType: Deaths)
         }}
@@ -350,6 +352,16 @@ export async function fetchRunMetrics(characterName: string, realm: string, regi
     for (const entry of dmgDoneEntries) {
       if (entry.name && normalize(entry.name) === charNorm) {
         charDps = fightDurationSec > 0 ? Math.round((entry.total ?? 0) / fightDurationSec) : 0;
+        break;
+      }
+    }
+
+    // ── Extract HPS ─────────────────────────────────────────────────────────
+    let charHps = 0;
+    const healDoneEntries: any[] = report.healingDone?.data?.entries ?? [];
+    for (const entry of healDoneEntries) {
+      if (entry.name && normalize(entry.name) === charNorm) {
+        charHps = fightDurationSec > 0 ? Math.round((entry.total ?? 0) / fightDurationSec) : 0;
         break;
       }
     }
@@ -403,13 +415,15 @@ export async function fetchRunMetrics(characterName: string, realm: string, regi
       metrics: {
         interrupts: extractInterrupts(report.interrupts),
         dps: charDps,
+        hps: charHps,
         damageTakenPercent,
         isTank,
         damageTakenRaw: charDamageTaken,
         deaths: deathCount,
+        parsePercent,
       },
     };
   } catch {
-    return { success: true, reportCode, fightID, matchedDungeon: matchedEncounterName ?? run.dungeon, metrics: { interrupts: 0, dps: 0, damageTakenPercent: null, isTank: false, damageTakenRaw: 0, deaths: 0 } };
+    return { success: true, reportCode, fightID, matchedDungeon: matchedEncounterName ?? run.dungeon, metrics: { interrupts: 0, dps: 0, hps: 0, damageTakenPercent: null, isTank: false, damageTakenRaw: 0, deaths: 0, parsePercent } };
   }
 }

@@ -29,6 +29,23 @@ function formatDps(dps: number): string {
   return dps.toString();
 }
 
+function formatHps(hps: number): string {
+  if (hps >= 1_000_000) return `${(hps / 1_000_000).toFixed(1)}M`;
+  if (hps >= 1_000) return `${(hps / 1_000).toFixed(1)}K`;
+  return hps.toString();
+}
+
+/** Color + label for a WCL parse percentile. */
+function getParseInfo(pct: number | null): { color: string; label: string; tier: string } {
+  if (pct === null) return { color: 'text-slate-500', label: 'N/A', tier: '' };
+  if (pct >= 99) return { color: 'text-amber-400', label: `${pct.toFixed(0)}%`, tier: 'Legendary' };
+  if (pct >= 95) return { color: 'text-orange-400', label: `${pct.toFixed(0)}%`, tier: 'Epic' };
+  if (pct >= 75) return { color: 'text-purple-400', label: `${pct.toFixed(0)}%`, tier: 'Rare' };
+  if (pct >= 50) return { color: 'text-blue-400', label: `${pct.toFixed(0)}%`, tier: 'Uncommon' };
+  if (pct >= 25) return { color: 'text-green-400', label: `${pct.toFixed(0)}%`, tier: 'Common' };
+  return { color: 'text-slate-500', label: `${pct.toFixed(0)}%`, tier: 'Poor' };
+}
+
 function formatDamageRaw(dmg: number): string {
   if (dmg >= 1_000_000) return `${(dmg / 1_000_000).toFixed(1)}M`;
   if (dmg >= 1_000) return `${(dmg / 1_000).toFixed(0)}K`;
@@ -108,6 +125,17 @@ function buildVerdict(
     else lines.push({ icon: '⚡', text: `Only ${kicks} interrupts. DPS must kick — no excuses.`, tone: 'bad' });
   }
 
+  /* ── WCL Parse % (universal) ─────────────────────────────────────── */
+  const parse = metrics.parsePercent;
+  if (parse !== null) {
+    const pi = getParseInfo(parse);
+    if (parse >= 95) lines.push({ icon: '🏆', text: `${pi.label} parse (${pi.tier}) — elite performance on this dungeon.`, tone: 'good' });
+    else if (parse >= 75) lines.push({ icon: '📊', text: `${pi.label} parse (${pi.tier}) — above average.`, tone: 'good' });
+    else if (parse >= 50) lines.push({ icon: '📊', text: `${pi.label} parse (${pi.tier}) — middle of the pack.`, tone: 'info' });
+    else if (parse >= 25) lines.push({ icon: '📊', text: `${pi.label} parse (${pi.tier}) — below average for this dungeon.`, tone: 'warn' });
+    else lines.push({ icon: '📊', text: `${pi.label} parse (${pi.tier}) — bottom quartile. Rough run or undergeared?`, tone: 'bad' });
+  }
+
   /* ── Role-specific performance ──────────────────────────────────── */
   if (role === 'TANK') {
     // Damage taken assessment
@@ -121,18 +149,19 @@ function buildVerdict(
         lines.push({ icon: '🛡️', text: `${dmgPct}% of group damage — very low, check if DPS are eating mechanics.`, tone: 'info' });
       }
     }
-    // Tank DPS
+    // Tank DPS (still shown as context)
     const dps = metrics.dps ?? 0;
     if (dps > 0) {
-      const tankDpsThresholds = keyLevel >= 14 ? [60000, 35000] : keyLevel >= 10 ? [45000, 25000] : [30000, 15000];
-      if (dps >= tankDpsThresholds[0]) lines.push({ icon: '⚔️', text: `${formatDps(dps)} DPS — strong offensive output for a tank.`, tone: 'good' });
-      else if (dps >= tankDpsThresholds[1]) lines.push({ icon: '⚔️', text: `${formatDps(dps)} DPS — decent tank damage.`, tone: 'info' });
-      else lines.push({ icon: '⚔️', text: `${formatDps(dps)} DPS — low tank damage. Could be slowing the group down.`, tone: 'warn' });
+      lines.push({ icon: '⚔️', text: `${formatDps(dps)} DPS — contributing offensively as tank.`, tone: 'info' });
     }
-    // Tank tips
     lines.push({ icon: '📋', text: 'Tanks set the pace — big pulls at this key level reward confident routing.', tone: 'info' });
 
   } else if (role === 'HEALER') {
+    // HPS output
+    const hps = metrics.hps ?? 0;
+    if (hps > 0) {
+      lines.push({ icon: '💚', text: `${formatHps(hps)} HPS throughput.`, tone: 'info' });
+    }
     // Healer damage taken
     const dmgPct = metrics.damageTakenPercent;
     if (dmgPct !== null) {
@@ -140,24 +169,18 @@ function buildVerdict(
       else if (dmgPct <= 10) lines.push({ icon: '🛡️', text: `Damage taken is near average — watch avoidable damage.`, tone: 'info' });
       else lines.push({ icon: '🛡️', text: `+${dmgPct}% vs avg damage taken — healers eating damage makes runs harder.`, tone: 'bad' });
     }
-    // Healer DPS contribution
+    // Healer DPS as bonus context
     const dps = metrics.dps ?? 0;
     if (dps > 0) {
-      const healDpsThresholds = keyLevel >= 14 ? [35000, 15000] : keyLevel >= 10 ? [25000, 10000] : [15000, 5000];
-      if (dps >= healDpsThresholds[0]) lines.push({ icon: '⚔️', text: `${formatDps(dps)} DPS — great damage contribution while healing.`, tone: 'good' });
-      else if (dps >= healDpsThresholds[1]) lines.push({ icon: '⚔️', text: `${formatDps(dps)} DPS — some offensive contribution.`, tone: 'info' });
-      else lines.push({ icon: '⚔️', text: `${formatDps(dps)} DPS — very low damage. Weave in damage between heals.`, tone: 'warn' });
+      lines.push({ icon: '⚔️', text: `${formatDps(dps)} DPS on the side — every bit helps.`, tone: 'info' });
     }
     lines.push({ icon: '📋', text: 'Healers who do damage while keeping the group alive are the real MVPs.', tone: 'info' });
 
   } else {
-    // DPS role
+    // DPS role — parse % already covers performance, add context
     const dps = metrics.dps ?? 0;
     if (dps > 0) {
-      const dpsThresholds = keyLevel >= 14 ? [120000, 80000] : keyLevel >= 10 ? [90000, 60000] : [60000, 35000];
-      if (dps >= dpsThresholds[0]) lines.push({ icon: '⚔️', text: `${formatDps(dps)} DPS — pumping. Carry potential.`, tone: 'good' });
-      else if (dps >= dpsThresholds[1]) lines.push({ icon: '⚔️', text: `${formatDps(dps)} DPS — serviceable for +${keyLevel}.`, tone: 'warn' });
-      else lines.push({ icon: '⚔️', text: `${formatDps(dps)} DPS — underperforming for a +${keyLevel}. Rotation or gear issue?`, tone: 'bad' });
+      lines.push({ icon: '⚔️', text: `${formatDps(dps)} DPS overall for this run.`, tone: 'info' });
     }
     // DPS damage taken
     const dmgPct = metrics.damageTakenPercent;
@@ -194,23 +217,17 @@ function getOverallVerdict(
   else if (kicks >= Math.floor(kickTarget / 2)) score += 1;
   else score -= 1;
 
-  // DPS output (role-aware)
-  const dps = metrics.dps ?? 0;
-  if (role === 'DPS') {
-    const good = keyLevel >= 14 ? 120000 : keyLevel >= 10 ? 90000 : 60000;
-    const ok = keyLevel >= 14 ? 80000 : keyLevel >= 10 ? 60000 : 35000;
-    if (dps >= good) score += 3;
-    else if (dps >= ok) score += 1;
+  // Performance via WCL parse % (role-agnostic — WCL already compares against peers)
+  const parse = metrics.parsePercent;
+  if (parse !== null) {
+    if (parse >= 95) score += 3;
+    else if (parse >= 75) score += 2;
+    else if (parse >= 50) score += 1;
+    else if (parse >= 25) score += 0;
     else score -= 1;
-  } else if (role === 'TANK') {
-    const good = keyLevel >= 14 ? 60000 : 35000;
-    if (dps >= good) score += 2;
-    else score += 1;
   } else {
-    // Healer
-    const good = keyLevel >= 14 ? 35000 : 15000;
-    if (dps >= good) score += 2;
-    else score += 1;
+    // No parse data — give neutral score
+    score += 1;
   }
 
   // Damage taken
@@ -272,6 +289,8 @@ export function PugVettingModal({
   }, [characterName, realm, region, run]);
 
   const dmgCtx = metrics ? getDamageContext(metrics.damageTakenPercent, metrics.isTank) : null;
+  const parseInfo = metrics ? getParseInfo(metrics.parsePercent) : null;
+  const isHealer = role === 'HEALER';
 
   return (
     /* ── Backdrop ─────────────────────────────────────────────────────── */
@@ -390,18 +409,32 @@ export function PugVettingModal({
               </div>
             </div>
 
-            {/* ── DPS ────────────────────────────────────────────────── */}
-            <div className="relative flex flex-col items-center gap-3 rounded-xl border border-white/5 bg-white/[0.03] px-4 py-5 text-center shadow-lg shadow-purple-500/20 overflow-hidden">
-              <div className="absolute top-0 right-0 w-16 h-16 bg-white/[0.015] rounded-bl-full" />
-              <span className="text-2xl leading-none">⚔️</span>
-              <div className="text-3xl font-black tracking-tight tabular-nums text-purple-400">
-                {loading ? <MetricSkeleton /> : formatDps(metrics?.dps ?? 0)}
+            {/* ── DPS or HPS (role-dependent) ──────────────────────── */}
+            {isHealer ? (
+              <div className="relative flex flex-col items-center gap-3 rounded-xl border border-white/5 bg-white/[0.03] px-4 py-5 text-center shadow-lg shadow-emerald-500/20 overflow-hidden">
+                <div className="absolute top-0 right-0 w-16 h-16 bg-white/[0.015] rounded-bl-full" />
+                <span className="text-2xl leading-none">💚</span>
+                <div className="text-3xl font-black tracking-tight tabular-nums text-emerald-400">
+                  {loading ? <MetricSkeleton /> : formatHps(metrics?.hps ?? 0)}
+                </div>
+                <div className="space-y-0.5">
+                  <div className="text-xs font-semibold text-slate-300">HPS Output</div>
+                  <div className="text-[10px] text-slate-600">Healing per second</div>
+                </div>
               </div>
-              <div className="space-y-0.5">
-                <div className="text-xs font-semibold text-slate-300">DPS Output</div>
-                <div className="text-[10px] text-slate-600">Damage per second</div>
+            ) : (
+              <div className="relative flex flex-col items-center gap-3 rounded-xl border border-white/5 bg-white/[0.03] px-4 py-5 text-center shadow-lg shadow-purple-500/20 overflow-hidden">
+                <div className="absolute top-0 right-0 w-16 h-16 bg-white/[0.015] rounded-bl-full" />
+                <span className="text-2xl leading-none">⚔️</span>
+                <div className="text-3xl font-black tracking-tight tabular-nums text-purple-400">
+                  {loading ? <MetricSkeleton /> : formatDps(metrics?.dps ?? 0)}
+                </div>
+                <div className="space-y-0.5">
+                  <div className="text-xs font-semibold text-slate-300">DPS Output</div>
+                  <div className="text-[10px] text-slate-600">Damage per second</div>
+                </div>
               </div>
-            </div>
+            )}
 
             {/* ── Damage Taken (Relative) ────────────────────────────── */}
             <div className="relative flex flex-col items-center gap-3 rounded-xl border border-white/5 bg-white/[0.03] px-4 py-5 text-center shadow-lg shadow-orange-500/20 overflow-hidden">
@@ -433,6 +466,21 @@ export function PugVettingModal({
               <div className="space-y-0.5">
                 <div className="text-xs font-semibold text-slate-300">Deaths</div>
                 <div className="text-[10px] text-slate-600">Count across the run</div>
+              </div>
+            </div>
+
+            {/* ── WCL Parse % (full width) ──────────────────────────── */}
+            <div className="relative col-span-2 flex items-center justify-between rounded-xl border border-white/5 bg-white/[0.03] px-5 py-4 shadow-lg shadow-amber-500/10 overflow-hidden">
+              <div className="absolute top-0 right-0 w-20 h-20 bg-white/[0.015] rounded-bl-full" />
+              <div className="flex items-center gap-3">
+                <span className="text-2xl leading-none">📊</span>
+                <div>
+                  <div className="text-xs font-semibold text-slate-300">WCL Parse</div>
+                  <div className="text-[10px] text-slate-600">{loading ? 'Loading…' : parseInfo?.tier || 'Dungeon percentile rank'}</div>
+                </div>
+              </div>
+              <div className={`text-3xl font-black tracking-tight tabular-nums ${loading ? '' : parseInfo?.color ?? 'text-slate-500'}`}>
+                {loading ? <MetricSkeleton /> : parseInfo?.label ?? 'N/A'}
               </div>
             </div>
 

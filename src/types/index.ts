@@ -169,6 +169,8 @@ export interface PugVettingMetrics {
   interrupts: number | null;
   /** DPS output (damage per second) for this character in the run. */
   dps: number | null;
+  /** HPS output (healing per second) for this character in the run. */
+  hps: number | null;
   /**
    * Damage taken context. For non-tanks: percentage above/below the non-tank
    * average (negative = below avg = good). For tanks: percentage of total
@@ -181,6 +183,8 @@ export interface PugVettingMetrics {
   damageTakenRaw: number | null;
   /** Total deaths for this character in the run. */
   deaths: number | null;
+  /** WCL parse percentile for this dungeon (0-100). */
+  parsePercent: number | null;
 }
 
 export type PugVettingFailureReason = 'no_log_found';

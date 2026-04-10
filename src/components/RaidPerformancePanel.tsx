@@ -36,6 +36,168 @@ function formatKillTime(ms: number | null): string {
   return `${Math.floor(totalSec / 60)}:${(totalSec % 60).toString().padStart(2, '0')}`;
 }
 
+/* ─── Raid Verdict System ───────────────────────────────────────────────── */
+
+interface RaidVerdictLine {
+  icon: string;
+  text: string;
+  tone: 'good' | 'warn' | 'bad' | 'info';
+}
+
+interface RaidVerdict {
+  overall: { label: string; color: string; bg: string };
+  lines: RaidVerdictLine[];
+  stats: {
+    avgParse: number | null;
+    medianParse: number | null;
+    totalKills: number;
+    bossesKilled: number;
+    totalBosses: number;
+    grayParses: number;
+    greenParses: number;
+    purpleParses: number;
+    orangeParses: number;
+    goldParses: number;
+  };
+}
+
+function analyzeRaidPerformance(bosses: ProcessedBossData[], difficulty: Difficulty): RaidVerdict {
+  const lines: RaidVerdictLine[] = [];
+
+  // Gather all boss data for this difficulty
+  const killedBosses = bosses.filter((b) => (b[difficulty].kills ?? 0) > 0);
+  const parses = killedBosses
+    .map((b) => b[difficulty].rankPercent)
+    .filter((p): p is number => p !== null);
+  const totalKills = killedBosses.reduce((sum, b) => sum + (b[difficulty].kills ?? 0), 0);
+
+  // Parse distribution
+  const grayParses = parses.filter((p) => p < 25).length;
+  const greenParses = parses.filter((p) => p >= 25 && p < 50).length;
+  const purpleParses = parses.filter((p) => p >= 75 && p < 95).length;
+  const orangeParses = parses.filter((p) => p >= 95 && p < 99).length;
+  const goldParses = parses.filter((p) => p >= 99).length;
+
+  // Averages
+  const avgParse = parses.length > 0 ? Math.round(parses.reduce((a, b) => a + b, 0) / parses.length) : null;
+  const sortedParses = [...parses].sort((a, b) => a - b);
+  const medianParse = sortedParses.length > 0
+    ? sortedParses.length % 2 === 0
+      ? Math.round((sortedParses[sortedParses.length / 2 - 1] + sortedParses[sortedParses.length / 2]) / 2)
+      : Math.round(sortedParses[Math.floor(sortedParses.length / 2)])
+    : null;
+
+  // Consistency (spread between worst and best)
+  const minParse = sortedParses.length > 0 ? sortedParses[0] : null;
+  const maxParse = sortedParses.length > 0 ? sortedParses[sortedParses.length - 1] : null;
+
+  /* ── Progression ──────────────────────────────────────────────── */
+  const bossesKilled = killedBosses.length;
+  const totalBosses = bosses.length;
+
+  if (bossesKilled === 0) {
+    lines.push({ icon: '📭', text: `No kills at ${difficulty} difficulty.`, tone: 'info' });
+    return {
+      overall: { label: 'No Data', color: 'text-slate-500', bg: 'bg-white/5 border-white/10' },
+      lines,
+      stats: { avgParse: null, medianParse: null, totalKills: 0, bossesKilled: 0, totalBosses, grayParses: 0, greenParses: 0, purpleParses: 0, orangeParses: 0, goldParses: 0 },
+    };
+  }
+
+  if (bossesKilled === totalBosses) {
+    lines.push({ icon: '✅', text: `Full clear — ${bossesKilled}/${totalBosses} bosses killed.`, tone: 'good' });
+  } else if (bossesKilled >= totalBosses * 0.5) {
+    lines.push({ icon: '📊', text: `${bossesKilled}/${totalBosses} bosses killed — decent progression.`, tone: 'info' });
+  } else {
+    lines.push({ icon: '⚠️', text: `Only ${bossesKilled}/${totalBosses} bosses killed — limited progression.`, tone: 'warn' });
+  }
+
+  /* ── Average parse ────────────────────────────────────────────── */
+  if (avgParse !== null) {
+    if (avgParse >= 90) lines.push({ icon: '🏆', text: `${avgParse} avg parse — elite raider.`, tone: 'good' });
+    else if (avgParse >= 75) lines.push({ icon: '📊', text: `${avgParse} avg parse — strong performer.`, tone: 'good' });
+    else if (avgParse >= 50) lines.push({ icon: '📊', text: `${avgParse} avg parse — middle of the pack.`, tone: 'info' });
+    else if (avgParse >= 25) lines.push({ icon: '📊', text: `${avgParse} avg parse — below average.`, tone: 'warn' });
+    else lines.push({ icon: '📊', text: `${avgParse} avg parse — consistently low.`, tone: 'bad' });
+  }
+
+  /* ── Consistency ──────────────────────────────────────────────── */
+  if (minParse !== null && maxParse !== null && parses.length >= 3) {
+    const spread = maxParse - minParse;
+    if (spread <= 15) {
+      lines.push({ icon: '🎯', text: `Very consistent — ${minParse.toFixed(0)}% to ${maxParse.toFixed(0)}% spread.`, tone: 'good' });
+    } else if (spread <= 35) {
+      lines.push({ icon: '🎯', text: `Some variance — ${minParse.toFixed(0)}% to ${maxParse.toFixed(0)}% across bosses.`, tone: 'info' });
+    } else {
+      lines.push({ icon: '🎯', text: `Wildly inconsistent — ${minParse.toFixed(0)}% low, ${maxParse.toFixed(0)}% high. Possible carry on some fights.`, tone: 'warn' });
+    }
+  }
+
+  /* ── Gray/green parse flags ───────────────────────────────────── */
+  if (grayParses >= 2) {
+    lines.push({ icon: '🚩', text: `${grayParses} gray parse${grayParses > 1 ? 's' : ''} (below 25%) — red flag for being carried.`, tone: 'bad' });
+  } else if (grayParses === 1) {
+    lines.push({ icon: '⚠️', text: `1 gray parse — could be a bad pull or an unfamiliar fight.`, tone: 'warn' });
+  }
+
+  if (goldParses + orangeParses >= 2) {
+    lines.push({ icon: '🔥', text: `${goldParses + orangeParses} orange/gold parse${goldParses + orangeParses > 1 ? 's' : ''} — this player pumps.`, tone: 'good' });
+  }
+
+  /* ── Experience ───────────────────────────────────────────────── */
+  if (totalKills >= 30) {
+    lines.push({ icon: '📋', text: `${totalKills} total kills — very experienced at this difficulty.`, tone: 'good' });
+  } else if (totalKills >= 15) {
+    lines.push({ icon: '📋', text: `${totalKills} total kills — moderate experience.`, tone: 'info' });
+  } else if (totalKills >= bossesKilled) {
+    lines.push({ icon: '📋', text: `${totalKills} total kills — limited experience. Mostly 1-kill bosses.`, tone: 'warn' });
+  }
+
+  /* ── Overall verdict ──────────────────────────────────────────── */
+  let score = 0;
+
+  // Progression
+  if (bossesKilled === totalBosses) score += 2;
+  else if (bossesKilled >= totalBosses * 0.5) score += 1;
+
+  // Average parse
+  if (avgParse !== null) {
+    if (avgParse >= 90) score += 4;
+    else if (avgParse >= 75) score += 3;
+    else if (avgParse >= 50) score += 2;
+    else if (avgParse >= 25) score += 1;
+    else score -= 1;
+  }
+
+  // Gray parse penalty
+  score -= grayParses;
+
+  // Experience bonus
+  if (totalKills >= 30) score += 1;
+
+  // Orange/gold bonus
+  score += Math.min(goldParses + orangeParses, 2);
+
+  let overall: RaidVerdict['overall'];
+  if (score >= 7) overall = { label: 'Worthy', color: 'text-green-400', bg: 'bg-green-500/10 border-green-500/20' };
+  else if (score >= 4) overall = { label: 'Acceptable', color: 'text-blue-400', bg: 'bg-blue-500/10 border-blue-500/20' };
+  else if (score >= 2) overall = { label: 'Questionable', color: 'text-orange-400', bg: 'bg-orange-500/10 border-orange-500/20' };
+  else overall = { label: 'Unworthy', color: 'text-red-400', bg: 'bg-red-500/10 border-red-500/20' };
+
+  return {
+    overall,
+    lines,
+    stats: { avgParse, medianParse, totalKills, bossesKilled, totalBosses, grayParses, greenParses, purpleParses, orangeParses, goldParses },
+  };
+}
+
+const VERDICT_TONE_COLORS: Record<RaidVerdictLine['tone'], string> = {
+  good: 'text-green-400',
+  warn: 'text-orange-400',
+  bad: 'text-red-400',
+  info: 'text-slate-400',
+};
+
 /** Detect the highest difficulty that has at least one kill. */
 function detectHighestDifficulty(bosses: ProcessedBossData[]): Difficulty {
   const diffs: Difficulty[] = ['mythic', 'heroic', 'normal'];
@@ -48,6 +210,7 @@ function detectHighestDifficulty(bosses: ProcessedBossData[]): Difficulty {
 export function RaidPerformancePanel({ state, tier }: RaidPerformancePanelProps) {
   const [difficulty, setDifficulty] = useState<Difficulty>('mythic');
   const [hasAutoSelected, setHasAutoSelected] = useState(false);
+  const [showVerdict, setShowVerdict] = useState(false);
 
   // Determine the tier data for auto-detection
   const tierData = state.data
@@ -243,6 +406,105 @@ export function RaidPerformancePanel({ state, tier }: RaidPerformancePanelProps)
           </tbody>
         </table>
       </div>
+
+      {/* ── Judge Raid Button ──────────────────────────────────────── */}
+      <div className="border-t border-white/5 pt-4">
+        <button
+          onClick={() => setShowVerdict((v) => !v)}
+          className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-xs font-semibold uppercase tracking-wide transition-all ${
+            showVerdict
+              ? 'bg-gradient-to-r from-accent-violet to-accent-teal text-white shadow-md'
+              : 'text-slate-500 border border-white/5 bg-white/[0.03] hover:text-accent-teal hover:border-accent-teal/40 hover:bg-accent-teal/5 hover:shadow-[0_0_10px_rgba(20,184,166,0.15)]'
+          }`}
+        >
+          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 2L2 7l10 5 10-5-10-5z" />
+            <path d="M2 17l10 5 10-5" />
+            <path d="M2 12l10 5 10-5" />
+          </svg>
+          {showVerdict ? 'Hide Verdict' : 'Judge Raid Performance'}
+        </button>
+      </div>
+
+      {/* ── Raid Verdict ──────────────────────────────────────────── */}
+      {showVerdict && (() => {
+        const verdict = analyzeRaidPerformance(bosses, difficulty);
+        return (
+          <div className="rounded-xl border border-white/5 bg-white/[0.02] overflow-hidden">
+            {/* Overall verdict banner */}
+            <div className={`flex items-center justify-between px-4 py-3 border-b border-white/5 ${verdict.overall.bg}`}>
+              <div className="flex items-center gap-2">
+                <span className="text-base">⚖️</span>
+                <span className="text-sm font-bold text-white">Raid Verdict</span>
+                <span className="text-[10px] text-slate-500 uppercase tracking-wider capitalize">{difficulty}</span>
+              </div>
+              <span className={`text-sm font-black uppercase tracking-wider ${verdict.overall.color}`}>
+                {verdict.overall.label}
+              </span>
+            </div>
+
+            {/* Stats summary bar */}
+            {verdict.stats.avgParse !== null && (
+              <div className="flex items-center gap-4 px-4 py-3 border-b border-white/5 bg-white/[0.01]">
+                <div className="text-center">
+                  <div className={`text-lg font-black tabular-nums ${
+                    verdict.stats.avgParse >= 75 ? 'text-purple-400'
+                    : verdict.stats.avgParse >= 50 ? 'text-blue-400'
+                    : verdict.stats.avgParse >= 25 ? 'text-green-400'
+                    : 'text-slate-500'
+                  }`}>
+                    {verdict.stats.avgParse}
+                  </div>
+                  <div className="text-[10px] text-slate-600">Avg Parse</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-lg font-black tabular-nums text-slate-300">
+                    {verdict.stats.medianParse}
+                  </div>
+                  <div className="text-[10px] text-slate-600">Median</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-lg font-black tabular-nums text-slate-300">
+                    {verdict.stats.bossesKilled}/{verdict.stats.totalBosses}
+                  </div>
+                  <div className="text-[10px] text-slate-600">Prog</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-lg font-black tabular-nums text-slate-300">
+                    {verdict.stats.totalKills}
+                  </div>
+                  <div className="text-[10px] text-slate-600">Kills</div>
+                </div>
+                {/* Parse distribution dots */}
+                <div className="ml-auto flex items-center gap-1.5">
+                  {verdict.stats.goldParses > 0 && (
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/15 text-amber-400">{verdict.stats.goldParses} gold</span>
+                  )}
+                  {verdict.stats.orangeParses > 0 && (
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-orange-500/15 text-orange-400">{verdict.stats.orangeParses} orange</span>
+                  )}
+                  {verdict.stats.purpleParses > 0 && (
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-500/15 text-purple-400">{verdict.stats.purpleParses} purple</span>
+                  )}
+                  {verdict.stats.grayParses > 0 && (
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-white/5 text-slate-500">{verdict.stats.grayParses} gray</span>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Line-by-line breakdown */}
+            <div className="p-4 space-y-2">
+              {verdict.lines.map((line, i) => (
+                <div key={i} className="flex items-start gap-2 text-xs leading-relaxed">
+                  <span className="shrink-0 mt-0.5">{line.icon}</span>
+                  <span className={VERDICT_TONE_COLORS[line.tone]}>{line.text}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
