@@ -93,10 +93,8 @@ const TONE_COLORS: Record<VerdictLine['tone'], string> = {
 function buildVerdict(
   metrics: PugVettingMetrics,
   role: CharacterRole,
-  run: RaiderIOBestRun,
 ): VerdictLine[] {
   const lines: VerdictLine[] = [];
-  const keyLevel = run.mythic_level ?? 0;
 
   /* ── Deaths (universal) ─────────────────────────────────────────── */
   const deaths = metrics.deaths ?? 0;
@@ -200,7 +198,6 @@ function buildVerdict(
 function getOverallVerdict(
   metrics: PugVettingMetrics,
   role: CharacterRole,
-  keyLevel: number,
 ): { label: string; color: string; bg: string } {
   let score = 0;
 
@@ -491,8 +488,8 @@ export function PugVettingModal({
         {metrics && !error && !noLogFound && (
           <div className="px-6 pb-2">
             {(() => {
-              const overall = getOverallVerdict(metrics, role, run.mythic_level ?? 0);
-              const verdictLines = buildVerdict(metrics, role, run);
+              const overall = getOverallVerdict(metrics, role);
+              const verdictLines = buildVerdict(metrics, role);
               return (
                 <div className="rounded-xl border border-white/5 bg-white/[0.02] overflow-hidden">
                   {/* Overall verdict banner */}
