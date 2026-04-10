@@ -244,12 +244,14 @@ export async function fetchRunMetrics(characterName: string, realm: string, regi
 
   if (!matchedEncounterId) return { success: false, reason: 'no_log_found' };
 
-  // ── Step 2: Use encounterRankings to get the report code ──────────────────
+  // ── Step 2: Use encounterRankings to get the report code + Key % ───────────
+  // metric: "keystone" returns the WCL Key % (overall M+ key performance),
+  // not the default DPS parse.
   const rankQuery = /* GraphQL */ `
     query($n: String!, $s: String!, $r: String!, $encID: Int!) {
       characterData {
         character(name: $n, serverSlug: $s, serverRegion: $r) {
-          encounterRankings(encounterID: $encID, difficulty: 10)
+          encounterRankings(encounterID: $encID, difficulty: 10, metric: keystone)
         }
       }
     }
