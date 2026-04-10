@@ -188,7 +188,12 @@ export function MythicPlusPanel({ state, tier }: MythicPlusPanelProps) {
           characterName={profile.name}
           realm={profile.realm}
           region={profile.region as import('../types').Region}
-          role={(profile.active_spec_role?.toUpperCase() ?? 'DPS') as CharacterRole}
+          role={(() => {
+            const raw = (profile.active_spec_role ?? '').toUpperCase();
+            if (raw === 'TANK') return 'TANK' as CharacterRole;
+            if (raw === 'HEALING' || raw === 'HEALER') return 'HEALER' as CharacterRole;
+            return 'DPS' as CharacterRole;
+          })()}
           specName={profile.active_spec_name ?? 'Unknown'}
           className={profile.class ?? 'Unknown'}
           onClose={() => setSelectedRun(null)}

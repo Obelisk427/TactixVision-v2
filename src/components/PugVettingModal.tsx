@@ -124,7 +124,7 @@ function buildVerdict(
     // Tank DPS
     const dps = metrics.dps ?? 0;
     if (dps > 0) {
-      const tankDpsThresholds = keyLevel >= 12 ? [400000, 250000] : keyLevel >= 8 ? [300000, 150000] : [200000, 100000];
+      const tankDpsThresholds = keyLevel >= 14 ? [60000, 35000] : keyLevel >= 10 ? [45000, 25000] : [30000, 15000];
       if (dps >= tankDpsThresholds[0]) lines.push({ icon: '⚔️', text: `${formatDps(dps)} DPS — strong offensive output for a tank.`, tone: 'good' });
       else if (dps >= tankDpsThresholds[1]) lines.push({ icon: '⚔️', text: `${formatDps(dps)} DPS — decent tank damage.`, tone: 'info' });
       else lines.push({ icon: '⚔️', text: `${formatDps(dps)} DPS — low tank damage. Could be slowing the group down.`, tone: 'warn' });
@@ -143,7 +143,7 @@ function buildVerdict(
     // Healer DPS contribution
     const dps = metrics.dps ?? 0;
     if (dps > 0) {
-      const healDpsThresholds = keyLevel >= 12 ? [200000, 100000] : keyLevel >= 8 ? [150000, 60000] : [80000, 30000];
+      const healDpsThresholds = keyLevel >= 14 ? [35000, 15000] : keyLevel >= 10 ? [25000, 10000] : [15000, 5000];
       if (dps >= healDpsThresholds[0]) lines.push({ icon: '⚔️', text: `${formatDps(dps)} DPS — great damage contribution while healing.`, tone: 'good' });
       else if (dps >= healDpsThresholds[1]) lines.push({ icon: '⚔️', text: `${formatDps(dps)} DPS — some offensive contribution.`, tone: 'info' });
       else lines.push({ icon: '⚔️', text: `${formatDps(dps)} DPS — very low damage. Weave in damage between heals.`, tone: 'warn' });
@@ -154,7 +154,7 @@ function buildVerdict(
     // DPS role
     const dps = metrics.dps ?? 0;
     if (dps > 0) {
-      const dpsThresholds = keyLevel >= 12 ? [800000, 500000] : keyLevel >= 8 ? [600000, 350000] : [400000, 200000];
+      const dpsThresholds = keyLevel >= 14 ? [120000, 80000] : keyLevel >= 10 ? [90000, 60000] : [60000, 35000];
       if (dps >= dpsThresholds[0]) lines.push({ icon: '⚔️', text: `${formatDps(dps)} DPS — pumping. Carry potential.`, tone: 'good' });
       else if (dps >= dpsThresholds[1]) lines.push({ icon: '⚔️', text: `${formatDps(dps)} DPS — serviceable for +${keyLevel}.`, tone: 'warn' });
       else lines.push({ icon: '⚔️', text: `${formatDps(dps)} DPS — underperforming for a +${keyLevel}. Rotation or gear issue?`, tone: 'bad' });
@@ -197,17 +197,18 @@ function getOverallVerdict(
   // DPS output (role-aware)
   const dps = metrics.dps ?? 0;
   if (role === 'DPS') {
-    const good = keyLevel >= 12 ? 800000 : keyLevel >= 8 ? 600000 : 400000;
-    const ok = keyLevel >= 12 ? 500000 : keyLevel >= 8 ? 350000 : 200000;
+    const good = keyLevel >= 14 ? 120000 : keyLevel >= 10 ? 90000 : 60000;
+    const ok = keyLevel >= 14 ? 80000 : keyLevel >= 10 ? 60000 : 35000;
     if (dps >= good) score += 3;
     else if (dps >= ok) score += 1;
     else score -= 1;
   } else if (role === 'TANK') {
-    const good = keyLevel >= 12 ? 400000 : 250000;
+    const good = keyLevel >= 14 ? 60000 : 35000;
     if (dps >= good) score += 2;
     else score += 1;
   } else {
-    const good = keyLevel >= 12 ? 200000 : 100000;
+    // Healer
+    const good = keyLevel >= 14 ? 35000 : 15000;
     if (dps >= good) score += 2;
     else score += 1;
   }
